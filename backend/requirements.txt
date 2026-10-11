@@ -1,0 +1,10 @@
+# Pinned to the versions this project was developed and tested with (Python 3.11).
+fastapi==0.119.1
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
+typing-extensions==4.16.0
+httpx==0.28.1
+langgraph==1.2.12
+langchain-openai==1.6.7
+python-dotenv==1.2.4
+playwright==1.63.0
