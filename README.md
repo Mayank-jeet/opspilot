@@ -2,7 +2,7 @@
 
 OpsPilot is a prototype AI worker that carries out and **verifies** business tasks in a controlled, simulated company environment. Give it a task in plain English, for example *"Find the invoice from Acme Corp with amount lesser than 50000 and process it"* or *"Add a new invoice ACE-019 for Acme Corp, $2000, due after 1 month"*. It finds or creates the invoice, enters it into an accounting app through a real browser, pauses for human approval when the amount is high, and then proves the ledger holds the expected record.
 
-The application combines a React dashboard, FastAPI simulated business applications, and a LangGraph loop in which an LLM planner chooses one structured action at a time from observed state, while deterministic guards enforce the rules.
+The application combines a React dashboard, FastAPI simulated business applications, and a LangGraph loop that observes the current state, picks the next action, and runs it through allow-listed tools. An LLM interprets the task and chooses the opening action, and deterministic guards enforce the rules.
 
 🔗 **Live Application:** https://opspilot-mocha-xi.vercel.app
 
@@ -14,7 +14,9 @@ The application combines a React dashboard, FastAPI simulated business applicati
 
 - Run business tasks from a plain-English instruction
 - Plan, act, observe loop built with LangGraph
-- LLM planner that picks one structured action at a time
+- Hybrid planning: an LLM turns the task into the opening structured action, and a deterministic workflow advances the remaining steps from observed state
+- Typed, allow-listed tools; the LLM cannot call anything outside the schema
+- Task state remembered across steps (search results, selected invoice, stage flags, history)
 - Deterministic guards that validate every action before it runs
 - Real browser automation with Playwright on the simulated accounting form
 - Human approval gate for invoices above ₹50,000 (INR equivalent)
@@ -167,9 +169,10 @@ Observe
  │
  │  Reads the current state of the task
  ▼
-Planner (LLM)
+Planner
  │
- │  Chooses the next structured action
+ │  Picks the next structured action
+ │  (LLM for the opening step, deterministic workflow after that)
  ▼
 Executor
  │
@@ -201,7 +204,64 @@ Amount above ₹50,000?
                                               User
 ```
 
-The loop repeats observe → plan → execute until the task is verified, rejected or stopped. Execution is capped at a fixed number of steps.
+The loop repeats observe → plan → execute until the task is verified, rejected or stopped. Execution is capped at 12 steps.
+
+## How It Works
+
+The agent is a LangGraph graph with two nodes, **plan** and **execute**, joined in a loop.
+
+1. **Plan** produces the next action as a typed `AgentAction`: a tool name from a fixed list, its arguments, and a reason.
+   - **Opening step.** The LLM reads the task and chooses `search_inbox` (find an invoice) or `create_invoice` (add one). It extracts the sender, invoice number, amount, currency and due date as structured arguments.
+   - **Remaining steps.** A deterministic workflow function derives the next step from observed state: read the invoice, check accounting, open the form, fill it, submit, verify, finish. It finishes early with a clear reason if nothing matches, the amount filter excludes every invoice, or the amount is 0.
+   - **Fallback.** Until a search or create has succeeded (for example when the opening call failed), the LLM planner is asked again with the failure in its context.
+2. **Execute** runs one tool through `execute_action`. It checks preconditions and policy before touching anything, then returns an observation and appends an event to the execution history.
+3. The loop ends when the task is completed, has failed, or is waiting for approval. Otherwise it goes back to **plan** with the updated state.
+
+**What the agent remembers.** `AgentState` carries the task, search results, the selected invoice, a flag for each completed stage, the execution history, errors, approval status and the verification result.
+
+**Pause and resume.** When an invoice is above ₹50,000, `submit_invoice` returns `APPROVAL_REQUIRED` and the run stops with the state saved by task id. `POST /api/tasks/{id}/approval` records the decision. On approval it registers the exact invoice payload as approved and resumes the graph; on rejection the task ends with nothing submitted.
+
+**Finishing.** A task only counts as completed if `verify_invoice` succeeded. Otherwise `finish` marks it failed with the reason.
+
+## Design Decisions
+
+- **Hybrid planning instead of an LLM call for every step.** The invoice sequence is known and safety-critical, so repeating steps through an LLM would add cost and variance and make failures harder to reproduce. The LLM does what code cannot do well, which is interpreting free-form text into structured arguments. The trade-off is less autonomy on new task types (see Generalization).
+- **Structured, allow-listed actions.** The planner returns a Pydantic `AgentAction` with a fixed set of tool names and `extra=forbid`, so an invalid tool or unknown argument is rejected rather than executed.
+- **Policy lives in the executor, not in the prompt.** Every tool checks its own preconditions (for example `check_accounting` must run before `open_accounting`, and `submit_invoice` needs the form to be filled). A model that ignores the prompt still cannot skip a check.
+- **Approval enforced twice, and bound to the exact payload.** The executor stops at the gate, and the accounting API independently rejects any invoice above ₹50,000 unless it matches the approved payload exactly. The approval is consumed on use, so it cannot be replayed.
+- **Verification gates completion.** After submitting, the agent reads the accounting record back and compares the invoice number, vendor, amount, currency, due date and `PROCESSED` status. The agent cannot report success without this passing.
+- **Duplicate protection.** `check_accounting` runs before any submission, and an existing matching record is verified instead of resubmitted.
+- **Dates and money handled in code.** The LLM never computes dates or converts currency. The approval rule compares the INR equivalent, so invoices in different currencies are comparable, and rates are stored with the invoice.
+- **Real browser, sandboxed environment.** Playwright drives actual Chromium against simulated company pages served by the same backend, so no real credentials or third-party systems are involved.
+- **Failures are visible and bounded.** Every action writes an event to the trace. A step failure is retried, a second failure of the same tool stops the run, and total steps are capped at 12.
+- **In-memory state, single worker.** This keeps the prototype simple, at the cost of persistence (see Limitations).
+
+## Generalization
+
+**Reusable for a different task:**
+- the plan and execute loop and the `AgentAction` and `AgentState` schemas
+- the pattern of allow-listed tools with precondition checks
+- the approval gate and pause/resume flow
+- retry and recovery handling, the step cap and the execution trace
+- the rule that a task completes only after verification succeeds
+
+**Specific to invoices:**
+- the tool set and the planner prompt
+- `_workflow_action`, which encodes the invoice sequence in code
+- the amount-filter parsing, which uses regular expressions
+
+To support a new task type you would add its tools and preconditions to the executor, add the tool names to `AgentAction`, and either write a new workflow function or let the LLM choose every step with an updated prompt. The architecture carries over, but a new task type does not run without code changes.
+
+## Assumptions
+
+- The environment is a simulated company with sandbox data; no real credentials or third-party systems are used.
+- "Latest invoice" means the newest by received time.
+- The approval threshold is ₹50,000, applied to the INR equivalent of the invoice amount.
+- Amounts are whole numbers. If an added invoice has no amount, it is created with amount 0 and the agent stops before submitting.
+- If no due date is given, it defaults to one month after the received date.
+- `$` means USD and `¥` means JPY. Daily exchange rates are accurate enough for the approval rule.
+- Any user of the dashboard can approve or reject; there are no separate approver roles.
+- A single backend worker serves one demo environment.
 
 ## Dashboard
 
@@ -311,6 +371,7 @@ Allowed tools: `search_inbox`, `read_invoice`, `create_invoice`, `check_accounti
 - The executor enforces action order and the approval threshold. The accounting API repeats the approval check using its own conversion.
 - `verify_invoice` compares the stored record's fields, currency and status.
 - An injected transient failure retries the same action up to two times. After that, the run stops with `RECOVERY_EXHAUSTED`.
+- A real tool failure (for example a Playwright error) is recorded as `TOOL_FAILURE`. The workflow re-derives the same step from state, which acts as one retry. A second failure of the same tool stops the run with a clear summary.
 - Execution is capped at a fixed number of steps.
 - The task, approval and failure-injection endpoints require a demo key when `DEMO_KEY` is set.
 
@@ -392,10 +453,16 @@ When the API returns 401, the dashboard asks for the demo key and keeps it in `s
 - The planner needs an OpenAI API key, and API usage depends on the limits and billing of that account.
 - The planner can choose poorly; deterministic guards and final verification limit the impact.
 - Exchange rates are daily, with fixed fallback rates for only a few currencies when the rate API is unreachable.
+- After the first successful search or create, the invoice flow is a fixed sequence in code. This makes runs reliable but limits autonomy on new task types.
+- Amount conditions in task text are parsed with regular expressions, so unusual phrasing may not be recognized.
+- Verification reads the accounting record directly from the backend's ledger, not through a second channel such as the rendered UI.
+- Real tool failures are retried only once.
 - There is no persistent database, task queue, or evaluation dashboard.
 
 ## Future Improvements
 
+- A tool registry with declared preconditions, so new task types need no new workflow code and the LLM can plan more steps
+- Verification through an independent channel, such as reading the rendered accounting UI
 - Persistent database-backed storage for invoices, ledger and tasks
 - Per-user authentication
 - Streaming agent progress to the dashboard
@@ -414,9 +481,18 @@ When the API returns 401, the dashboard asks for the demo key and keeps it in `s
 7. Arm a failure with `{"tool":"submit_invoice"}`, run a lower-value task, and confirm the trace shows `SIMULATED_FAILURE`, `RECOVERY_RETRY` and eventual verification.
 8. Reject an approval to confirm nothing is submitted.
 
-## Built With
+## Models, APIs and Services Used
 
-Python, FastAPI, Pydantic, LangGraph, LangChain OpenAI, Playwright, httpx, React, Vite and Lucide. The default model is `gpt-4o-mini`; set `OPENAI_MODEL` to use another. Exchange rates: fawazahmed0/exchange-api.
+| Component | Use |
+|---|---|
+| OpenAI `gpt-4o-mini` (via `langchain-openai`) | Turns the task into the opening structured action and acts as the fallback planner. Set `OPENAI_MODEL` to use another model. |
+| LangGraph | The plan and execute loop and its state |
+| Playwright (Chromium) | Real browser automation on the simulated accounting page |
+| FastAPI, Pydantic, Uvicorn | Backend API, simulated company apps and typed schemas |
+| fawazahmed0 exchange-api | Free daily exchange rates, with an offline fallback |
+| React, Vite, Lucide | Dashboard |
+| Render | Backend hosting (Docker web service) |
+| Vercel | Frontend hosting |
 
 ## Author
 
