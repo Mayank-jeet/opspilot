@@ -4,9 +4,9 @@ OpsPilot is a prototype AI worker that carries out and **verifies** business tas
 
 The application combines a React dashboard, FastAPI simulated business applications, and a LangGraph loop in which an LLM planner chooses one structured action at a time from observed state, while deterministic guards enforce the rules.
 
-🔗 **Live Application:** https://opspilot-web-91y0.onrender.com
+🔗 **Live Application:** https://opspilot-mocha-xi.vercel.app
 
-> The agent endpoints are protected by a demo password, because each task calls the OpenAI API. Ask me for the key; the site prompts for it the first time you run a task. The app runs on a free Render instance, so the first load can take 30 to 60 seconds while the backend wakes up.
+> The agent endpoints are protected by a demo password, because each task calls the OpenAI API. Ask me for the key; the site prompts for it the first time you run a task. The backend runs on a free Render instance, so the first load can take 30 to 60 seconds while it wakes up.
 
 ---
 
@@ -324,13 +324,13 @@ python -m unittest discover -s tests -v
 
 ## Deployment
 
-OpsPilot is deployed entirely on **Render**.
+OpsPilot is deployed using **Vercel** and **Render**.
 
 ### Frontend
 
-The React frontend is deployed as a Render **Static Site**.
+The React frontend is deployed on **Vercel**.
 
-🔗 **Live Application:** https://opspilot-web-91y0.onrender.com
+🔗 **Live Application:** https://opspilot-mocha-xi.vercel.app
 
 ### Backend
 
@@ -342,7 +342,7 @@ The FastAPI backend is deployed as a Render **Docker web service**. The frontend
 User
   │
   ▼
-Render Static Site
+Vercel
 (React Frontend)
   │
   │ REST API  (X-Demo-Key header)
@@ -375,12 +375,11 @@ The image installs Chromium with `playwright install --with-deps chromium` and s
 
 ### Frontend settings
 
-Root Directory `frontend`, Build Command `npm ci && npm run build`, Publish Directory `dist`.
+Root Directory `frontend`, Framework Preset Vite, Build Command `npm run build`, Output Directory `dist`.
 
 | Variable | Purpose |
 |---|---|
 | `VITE_API_URL` | Backend URL with no trailing slash. It is read at build time, so redeploy the frontend after changing it. |
-| `NODE_VERSION` | `22` |
 
 When the API returns 401, the dashboard asks for the demo key and keeps it in `sessionStorage` for the browser session.
 
