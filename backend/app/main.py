@@ -19,6 +19,9 @@ CORS_ORIGINS = [
     "http://127.0.0.1:5173",
     *[o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()],
 ]
+# Vercel gives every deployment its own URL (opspilot-<id>-<team>.vercel.app), so allow this project's
+# deployment URLs by pattern. Override with CORS_ORIGIN_REGEX; set it to an empty string to disable.
+CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX", r"https://opspilot-[a-z0-9-]+-mayank-jeet\.vercel\.app") or None
 
 
 @asynccontextmanager
@@ -32,6 +35,7 @@ app = FastAPI(title="OpsPilot Simulated Company API", version="0.1.0", lifespan=
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", "X-Demo-Key"],
