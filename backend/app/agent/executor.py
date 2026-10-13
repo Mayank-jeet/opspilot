@@ -2,7 +2,6 @@ import calendar
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from ..currency import inr_fields, normalize_currency, to_inr
 from ..data import ACCOUNTING_RECORDS, INVOICES, search_invoices
 from .state import AgentAction, AgentState
 
@@ -30,19 +29,16 @@ def _add_months(start: date, months: int) -> date:
     year, month = start.year + index // 12, index % 12 + 1
     return date(year, month, min(start.day, calendar.monthrange(year, month)[1]))
 
-def _same_invoice(record: dict[str, Any], invoice: dict[str, Any]) -> bool:
-    """Accounting record matches the inbox invoice (amount compared in the invoice's own currency)."""
-    return (all(record.get(key) == invoice.get(key) for key in ("invoice_number", "vendor", "amount", "due_date"))
-            and record.get("currency", "INR") == invoice.get("currency", "INR"))
-
-
 def execute_action(state: AgentState, action: AgentAction) -> dict[str, Any]:
     """Run one allow-listed tool after deterministic checks and policy gates."""
     args = action.arguments.model_dump(exclude_none=True)
     if action.tool == "finish":
         verified = (state.get("verification_result") or {}).get("success", False)
         if verified:
-            summary = f"Verified {state.get('invoice', {}).get('invoice_number')} is PROCESSED in accounting."
+            number = (state.get("invoice") or {}).get("invoice_number")
+            already = any(i.get("event") == "ALREADY_PROCESSED" for i in state.get("execution_history", []))
+            summary = (f"{number} was already processed; nothing new was submitted. Verified it is PROCESSED in accounting."
+                       if already else f"Verified {number} is PROCESSED in accounting.")
             return {"completed": True, "failed": False, "final_summary": summary,
                     "current_observation": summary, "execution_history": _event(state, "TASK_COMPLETED", summary)}
         summary = action.reason or "The task ended without independent verification."
@@ -69,12 +65,7 @@ def execute_action(state: AgentState, action: AgentAction) -> dict[str, Any]:
         if not number or not vendor:
             return _fail(state, "create_invoice requires invoice_number and vendor")
         if not isinstance(amount, int) or amount < 0:
-            return _fail(state, "create_invoice amount must be a whole number (0 or more)")
-        try:
-            currency = normalize_currency(args.get("currency"))
-            fx_fields = inr_fields(amount, currency)  # INR equivalent + rate used, for the approval rule
-        except ValueError as exc:
-            return _fail(state, str(exc))
+            return _fail(state, "create_invoice amount must be a whole number of INR (0 or more)")
         now = datetime.now().astimezone()
         today = now.date()
         try:
@@ -98,19 +89,17 @@ def execute_action(state: AgentState, action: AgentAction) -> dict[str, Any]:
             diffs, fill_amount = [], False
             if existing["vendor"].casefold() != vendor.casefold():
                 diffs.append(f"vendor {existing['vendor']} vs {vendor}")
-            # compare in the invoice's own currency so a changing daily rate is not a conflict
-            same_amount = existing.get("currency", "INR") == currency and existing["amount"] == amount
-            if amount > 0 and not same_amount:
+            if amount > 0 and existing["amount"] != amount:
                 if existing["amount"] == 0 and number not in ACCOUNTING_RECORDS:
                     fill_amount = True  # earlier created with the default amount 0; complete it now
                 else:
-                    diffs.append(f"amount {existing.get('currency', 'INR')} {existing['amount']} vs {currency} {amount}")
+                    diffs.append(f"amount {existing['amount']} vs {amount}")
             if exact_due and existing["due_date"] != due.isoformat():
                 diffs.append(f"due date {existing['due_date']} vs {due.isoformat()}")
             if diffs:
                 return _fail(state, f"Invoice {number} already exists with different details ({'; '.join(diffs)}); nothing was changed")
             if fill_amount:
-                existing.update({"amount": amount, "currency": currency, **fx_fields})
+                existing["amount"] = amount
             note = "filled in the missing amount" if fill_amount else "reused it instead of creating a duplicate"
             return {"invoice": dict(existing), "search_results": [dict(existing)],
                     "current_observation": f"Invoice {number} already exists; {note}.",
@@ -118,12 +107,11 @@ def execute_action(state: AgentState, action: AgentAction) -> dict[str, Any]:
 
         row = {"id": f"mail-{number.lower()}", "sender": vendor, "subject": f"Invoice #{number}",
                "received_at": now.isoformat(timespec="seconds"), "vendor": vendor, "invoice_number": number,
-               "amount": amount, "currency": currency, "due_date": due.isoformat()}
-        row.update(fx_fields)
+               "amount": amount, "currency": "INR", "due_date": due.isoformat()}
         INVOICES.append(row)
         return {"invoice": dict(row), "search_results": [dict(row)],
-                "current_observation": f"Created invoice {number} from {vendor} for {amount} {currency}, due {row['due_date']}.",
-                "execution_history": _event(state, "TOOL_SUCCESS", f"create_invoice added {number} ({amount} {currency}, due {row['due_date']})", tool="create_invoice")}
+                "current_observation": f"Created invoice {number} from {vendor} for {amount} INR, due {row['due_date']}.",
+                "execution_history": _event(state, "TOOL_SUCCESS", f"create_invoice added {number} ({amount} INR, due {row['due_date']})", tool="create_invoice")}
     
     if action.tool == "read_invoice":
         message_id = args.get("message_id")
@@ -141,7 +129,7 @@ def execute_action(state: AgentState, action: AgentAction) -> dict[str, Any]:
     if action.tool == "check_accounting":
         record = ACCOUNTING_RECORDS.get(invoice_number)
         if record:
-            valid = _same_invoice(record, invoice)
+            valid = all(record.get(k) == invoice.get(k) for k in ("invoice_number", "vendor", "amount", "due_date"))
             if not valid or record.get("status") != "PROCESSED":
                 return _fail(state, "Existing accounting record does not match the invoice")
             return {"current_observation": f"Invoice {invoice_number} is already processed and matches; no submission was made. Verify it independently.",
@@ -182,17 +170,10 @@ def execute_action(state: AgentState, action: AgentAction) -> dict[str, Any]:
         if (state.get("verification_result") or {}).get("success"):
             return {"current_observation": "Invoice is already verified; duplicate submission was skipped.",
                     "execution_history": _event(state, "DUPLICATE_SKIPPED", f"Skipped duplicate submit for {invoice_number}")}
-        invoice_currency = invoice.get("currency", "INR")
-        try:
-            amount_inr = to_inr(invoice["amount"], invoice_currency)  # the approval rule is always in INR
-        except ValueError as exc:
-            return _fail(state, str(exc))
-        if amount_inr > APPROVAL_THRESHOLD and state.get("approval_status") != "approved":
-            shown = f"{invoice['amount']} {invoice_currency}" + ("" if invoice_currency == "INR" else f" (about {amount_inr} INR)")
-            detail = f"{invoice_number} is {shown}, above the {APPROVAL_THRESHOLD} INR approval threshold."
+        if invoice["amount"] > APPROVAL_THRESHOLD and state.get("approval_status") != "approved":
+            detail = f"{invoice_number} is {invoice['amount']} INR, above the {APPROVAL_THRESHOLD} INR approval threshold."
             return {"approval_status": "pending", "current_observation": detail,
-                    "execution_history": _event(state, "APPROVAL_REQUIRED", detail, invoice_number=invoice_number,
-                                                amount=invoice["amount"], currency=invoice_currency, amount_inr=amount_inr)}
+                    "execution_history": _event(state, "APPROVAL_REQUIRED", detail, invoice_number=invoice_number, amount=invoice["amount"])}
         existing = ACCOUNTING_RECORDS.get(invoice_number)
         if existing:
             return _fail(state, f"{invoice_number} already exists; check and verify it instead of resubmitting")
@@ -206,7 +187,7 @@ def execute_action(state: AgentState, action: AgentAction) -> dict[str, Any]:
 
     if action.tool == "verify_invoice":
         record = ACCOUNTING_RECORDS.get(invoice_number)
-        fields_match = bool(record) and _same_invoice(record, invoice)
+        fields_match = bool(record) and all(record.get(k) == invoice.get(k) for k in ("invoice_number", "vendor", "amount", "due_date"))
         success = bool(fields_match and record.get("status") == "PROCESSED")
         result = {"success": success, "record": dict(record) if record else None,
                   "evidence": "Accounting record fields and status match." if success else "Accounting record is missing or does not match."}
