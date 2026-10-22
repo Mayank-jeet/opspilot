@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Activity, ArrowDown, Check, CircleAlert, FileText, Inbox, Landmark,
-  LoaderCircle, Plus, RefreshCw, Search, ShieldCheck, Sparkles,
+  LoaderCircle, Moon, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Sun,
 } from 'lucide-react';
 import './styles.css';
 import './invoice-form.css';
@@ -66,6 +66,11 @@ async function request(path, options = {}) {
 
 function App() {
   const [page, setPage] = useState('home');
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem('theme') || 'dark'; } catch { return 'dark'; } });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('theme', theme); } catch { /* storage unavailable */ }
+  }, [theme]);
   const [messages, setMessages] = useState([]);
   const [records, setRecords] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -235,6 +240,7 @@ function App() {
         <div className="mobile-brand"><span className="brand-mark"><Sparkles size={17} /></span><strong>OpsPilot</strong></div>
         <div className="breadcrumbs"><span>Workspace</span><span className="crumb-separator">/</span><b>{selectedPage.label}</b></div>
         <div className="top-actions">
+          <button className="icon-button theme-toggle" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
           {page !== 'home' && <button className="icon-button refresh-button" aria-label="Refresh page data" onClick={refresh}><RefreshCw size={16} /><span>Refresh</span></button>}
           <div className={`connection ${apiReady ? '' : 'offline'}`}><span />{apiReady ? 'Connected' : 'Offline'}</div>
         </div>

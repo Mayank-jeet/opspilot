@@ -10,7 +10,7 @@
 .cf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .cf-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .cf-field span { font-weight: 600; }
-.cf-field small { font-weight: 400; opacity: 0.65; }
+.cf-field small { font-weight: 400; opacity: 0.85; }
 .cf-field input,
 .cf-field select {
   padding: 9px 10px;
@@ -21,7 +21,7 @@
   color: inherit;
 }
 .cf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
-.cf-rate { margin: 12px 0 0; font-size: 13px; opacity: 0.8; }
+.cf-rate { margin: 12px 0 0; font-size: 13px; opacity: 0.95; }
 @media (max-width: 560px) { .cf-grid { grid-template-columns: 1fr; } }
 .cf-bar .button {
   display: inline-flex;
