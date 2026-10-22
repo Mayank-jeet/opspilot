@@ -227,7 +227,7 @@ function App() {
           <Icon size={18} /><span>{label}</span>{page === id && <span className="nav-dot" />}
         </button>)}
       </nav>
-      <div className="sidebar-bottom"><div className="environment"><span className={`online-dot ${apiReady ? '' : 'offline-dot'}`} /><div><b>Local environment</b><small>{apiReady ? 'API connected' : 'API offline'}</small></div></div><p className="sidebar-caption">Simulated company workspace</p></div>
+      <div className="sidebar-bottom"><div className="environment"><span className={`online-dot ${apiReady ? '' : 'offline-dot'}`} /><div><b>Local environment</b><small>{apiReady ? 'API connected' : 'API offline'}</small></div></div></div>
     </aside>
 
     <main className="main-content">
@@ -246,9 +246,9 @@ function App() {
         {error && apiReady && <div className="banner error-banner"><CircleAlert size={17} /><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
 
         {page === 'home' && <>
-          <section className="home-intro"><p className="eyebrow"><span className="pulse" /> YOUR AI WORKSPACE</p><h1>What should I take care of?</h1><p>Give OpsPilot a task. It will check its work.</p></section>
+          <section className="home-intro"><h1>What should I take care of?</h1></section>
           <section className="task-card">
-            <div className="task-card-heading"><div className="task-icon"><Sparkles size={18} /></div><div><h2>New task</h2><p>Invoice workflow · local simulation</p></div><span className={`status-pill ${agentResult?.approval_status === 'pending' ? 'waiting' : agentResult?.completed ? 'complete' : agentResult?.failed ? 'failed' : ''}`}><span />{agentStatus}</span></div>
+            <div className="task-card-heading"><div className="task-icon"><Sparkles size={18} /></div><div><h2>New task</h2></div><span className={`status-pill ${agentResult?.approval_status === 'pending' ? 'waiting' : agentResult?.completed ? 'complete' : agentResult?.failed ? 'failed' : ''}`}><span />{agentStatus}</span></div>
             <label htmlFor="task">TASK DESCRIPTION</label>
             <textarea id="task" value={taskText} onChange={(e) => setTaskText(e.target.value)} placeholder="For example: Process the latest Acme invoice" rows={2} />
             <div className="task-controls"><div className="task-hint"><ShieldCheck size={15} /><span>High-value invoices pause for your approval.</span></div><button className="button primary run-button" onClick={runAgentTask} disabled={busy || !apiReady || taskText.trim().length < 5}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={16} />} {busy ? 'Working…' : 'Run task'}</button></div>
@@ -258,9 +258,9 @@ function App() {
         </>}
 
         {page === 'inbox' && <>
-          <section className="page-heading"><div><p className="eyebrow">SIMULATED APPLICATION</p><h1>Company inbox</h1><p>Search messages and inspect invoice details.</p></div><span className="local-tag"><span /> LOCAL</span></section>
+          <section className="page-heading"><div><h1>Company inbox</h1></div><span className="local-tag"><span /> LOCAL</span></section>
           <article className="panel app-panel" id="inbox">
-            <div className="panel-head"><div className="app-title"><div className="app-icon inbox-icon"><Inbox size={19} /></div><div><h2>Inbox messages</h2><p>Newest messages first</p></div></div><span className="count-tag">{messages.length} messages</span></div>
+            <div className="panel-head"><div className="app-title"><div className="app-icon inbox-icon"><Inbox size={19} /></div><div><h2>Inbox messages</h2></div></div><span className="count-tag">{messages.length} messages</span></div>
             <div className="search-bar"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} placeholder="Search sender or subject" aria-label="Search inbox" /><button onClick={search} disabled={busy}>Search</button></div>
             <div className="cf-bar"><button className="button primary" type="button" onClick={() => setShowCreate((v) => !v)}><Plus size={15} /> {showCreate ? 'Close form' : 'Create invoice'}</button></div>
             {showCreate && <form className="cf-form" onSubmit={createInvoice}>
@@ -286,24 +286,23 @@ function App() {
         </>}
 
         {page === 'accounting' && <>
-          <section className="page-heading"><div><p className="eyebrow">SIMULATED APPLICATION</p><h1>Accounting</h1><p>Processed records confirmed by the simulated ledger.</p></div><span className="local-tag"><span /> LOCAL</span></section>
+          <section className="page-heading"><div><h1>Accounting</h1></div><span className="local-tag"><span /> LOCAL</span></section>
           <article className="panel app-panel" id="accounting">
-            <div className="panel-head"><div className="app-title"><div className="app-icon accounting-icon"><Landmark size={19} /></div><div><h2>Invoice register</h2><p>Accounting records</p></div></div><span className="count-tag">{records.length} processed</span></div>
+            <div className="panel-head"><div className="app-title"><div className="app-icon accounting-icon"><Landmark size={19} /></div><div><h2>Invoice register</h2></div></div><span className="count-tag">{records.length} processed</span></div>
             <div className="record-head"><span>INVOICE</span><span>AMOUNT</span><span>STATUS</span></div>
-            <div className="record-list">{records.map((record) => <div className="record-row" key={record.invoice_number}><div className="record-id"><span className="record-file"><FileText size={16} /></span><span><b>{record.invoice_number}</b><small>{record.vendor}</small></span></div><b className="record-amount">{money(record.amount, record.currency)}{inrNote(record)}</b><span className="processed"><Check size={13} /> {record.status}</span></div>)}{!records.length && <div className="empty ledger-empty"><span className="empty-graphic"><Landmark size={23} /></span><b>No processed invoices yet</b><span>Processed invoices will appear here after verification.</span>{latestAcme && <button onClick={() => { setPage('inbox'); openMessage(latestAcme); }}>Open latest Acme invoice <ArrowDown size={14} /></button>}</div>}</div>
+            <div className="record-list">{records.map((record) => <div className="record-row" key={record.invoice_number}><div className="record-id"><span className="record-file"><FileText size={16} /></span><span><b>{record.invoice_number}</b><small>{record.vendor}</small></span></div><b className="record-amount">{money(record.amount, record.currency)}{inrNote(record)}</b><span className="processed"><Check size={13} /> {record.status}</span></div>)}{!records.length && <div className="empty ledger-empty"><span className="empty-graphic"><Landmark size={23} /></span><b>No processed invoices yet</b>{latestAcme && <button onClick={() => { setPage('inbox'); openMessage(latestAcme); }}>Open latest Acme invoice <ArrowDown size={14} /></button>}</div>}</div>
             {records.length > 0 && <div className="verification-note"><ShieldCheck size={16} /><span>Records are read back from the accounting API after submission.</span></div>}
           </article>
         </>}
 
         {page === 'activity' && <>
-          <section className="page-heading"><div><p className="eyebrow">TASK HISTORY</p><h1>Activity log</h1><p>Actions, observations, and verification results for this session.</p></div></section>
-          <section className="trace-panel"><div className="trace-head"><div><div className="trace-icon"><Activity size={17} /></div><div><h2>Execution trace</h2><p>{agentResult?.task || 'Run a task to see its activity here.'}</p></div></div>{agentResult && <span className="human-tag">AGENT TRACE</span>}</div>
-            <div className="trace-content">{agentResult?.execution_history?.length ? agentResult.execution_history.map((item, index) => <div className="trace-line" key={`${item.event}-${index}`}><span className={`trace-point ${item.event?.includes('FAIL') || item.event?.includes('REJECT') ? 'trace-failed' : item.event?.includes('SUCCESS') || item.event?.includes('COMPLETED') ? 'done' : 'read'}`} /><div><b>{item.event?.replaceAll('_', ' ')}</b><span>{item.detail}{item.tool ? ` · ${item.tool}` : ''}</span></div><time>{item.time ? new Date(item.time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'AGENT'}</time></div>) : <div className="empty activity-empty"><span className="empty-graphic"><Activity size={21} /></span><b>No task activity yet</b><span>When OpsPilot runs a task, its tool decisions and results will be recorded here.</span><button onClick={() => setPage('home')}>Go to task home <ArrowDown size={14} /></button></div>}</div>
+          <section className="page-heading"><div><h1>Activity log</h1></div></section>
+          <section className="trace-panel"><div className="trace-head"><div><div className="trace-icon"><Activity size={17} /></div><div><h2>Execution trace</h2><p>{agentResult?.task}</p></div></div>{agentResult && <span className="human-tag">AGENT TRACE</span>}</div>
+            <div className="trace-content">{agentResult?.execution_history?.length ? agentResult.execution_history.map((item, index) => <div className="trace-line" key={`${item.event}-${index}`}><span className={`trace-point ${item.event?.includes('FAIL') || item.event?.includes('REJECT') ? 'trace-failed' : item.event?.includes('SUCCESS') || item.event?.includes('COMPLETED') ? 'done' : 'read'}`} /><div><b>{item.event?.replaceAll('_', ' ')}</b><span>{item.detail}{item.tool ? ` · ${item.tool}` : ''}</span></div><time>{item.time ? new Date(item.time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'AGENT'}</time></div>) : <div className="empty activity-empty"><span className="empty-graphic"><Activity size={21} /></span><b>No task activity yet</b><button onClick={() => setPage('home')}>Go to task home <ArrowDown size={14} /></button></div>}</div>
             {agentResult?.verification_result && <div className="verification-note"><ShieldCheck size={16} /><span>{agentResult.verification_result.evidence}</span></div>}
           </section>
         </>}
 
-        <footer>OpsPilot <span>·</span> Local simulated environment</footer>
       </div>
     </main>
     <nav className="mobile-nav" aria-label="Mobile navigation">{PAGES.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => { setPage(id); setError(''); setNotice(''); }} className={page === id ? 'active' : ''} aria-current={page === id ? 'page' : undefined}><Icon size={19} /><span>{label === 'Task home' ? 'Home' : label === 'Company inbox' ? 'Inbox' : label === 'Activity log' ? 'Activity' : label}</span></button>)}</nav>
