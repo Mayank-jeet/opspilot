@@ -241,7 +241,7 @@ function App() {
       </header>
 
       <div className={`page-content page-${page}`}>
-        {!apiReady && <div className="banner error-banner"><CircleAlert size={18} /><div><b>Backend not connected</b><span>Start the FastAPI server, then refresh this page.</span></div></div>}
+        {!apiReady && <div className="banner error-banner"><CircleAlert size={18} /><div><b>Backend not connected</b><span>Waking up the server, this can take up to a minute. Thanks for your patience!</span></div></div>}
         {notice && <div className="banner success-banner"><Check size={17} /><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Dismiss message">×</button></div>}
         {error && apiReady && <div className="banner error-banner"><CircleAlert size={17} /><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
 
